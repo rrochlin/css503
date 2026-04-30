@@ -6,9 +6,9 @@ using namespace std;
 
 int nThreads; // #threads
 
-int turn;              // turn points which thread should run
-pthread_mutex_t mutex; // a lock for this critical section
-pthread_cond_t *cond;  // array of condition variable[nThreads]
+int turn;             // turn points which thread should run
+pthread_mutex_t mtx;  // a lock for this critical section
+pthread_cond_t *cond; // array of condition variable[nThreads]
 
 void *thread_func(void *arg) {
    int id = ((int *)arg)[0]; // this thread's identifier
@@ -18,12 +18,11 @@ void *thread_func(void *arg) {
 
    {
       // enter the critical section
-      pthread_mutex_lock(&mutex);
+      pthread_mutex_lock(&mtx);
 
       while (turn != id) {
          // wait until the (id - 1)th thread signals me.
-         cout << "thread[" << id << "] waiting" << endl;
-         pthread_cond_wait(cond, &mutex);
+         pthread_cond_wait(cond, &mtx);
       }
       cout << "thread[" << id << "] got " << loop;
       switch (loop) {
@@ -41,14 +40,13 @@ void *thread_func(void *arg) {
       }
       cout << " turn" << endl;
 
-      turn = (turn + 1) % (nThreads - 1);
-      cout << "set turn to " << turn << endl;
+      turn = (turn + 1) % nThreads;
 
       // signal the next thread
       pthread_cond_signal(cond);
 
       // leave the critical section
-      pthread_mutex_unlock(&mutex);
+      pthread_mutex_unlock(&mtx);
    }
    return nullptr;
 }
