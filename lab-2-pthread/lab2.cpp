@@ -1,3 +1,22 @@
+/** ------------- lab2.cpp -------------------------------
+ * Lab 2
+ *
+ * Author : Robert Rochlin
+ * Course: GCSDD CSS 503 Systems Programming
+ *
+ * Creation Date: 2026-04-29
+ * Date of Last Modification: 2026-04-29
+ * -------------------------------------------------------------------------
+ * [Purpose]
+ * This program spawns the specified # of threads by
+ * the user and then tracks their execution handing off each
+ * task in order by task id
+ *
+ * [Execution]
+ * Compile: g++ lab2.cpp -lpthread -o lab2
+ * Execute: ./lab2 4
+ * -------------------------------------------------------------------------
+ */
 #include <iostream>
 #include <pthread.h>
 #include <stdio.h>
