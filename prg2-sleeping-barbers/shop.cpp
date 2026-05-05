@@ -1,5 +1,4 @@
-
-#include "shop_org.h"
+#include "shop.h"
 
 void Shop_org::init() {
    pthread_mutex_init(&mutex_, NULL);
