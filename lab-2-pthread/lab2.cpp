@@ -41,7 +41,7 @@ void *thread_func(void *arg) {
 
       while (turn != id) {
          // wait until the (id - 1)th thread signals me.
-         pthread_cond_wait(cond, &mtx);
+         pthread_cond_wait(&cond[id], &mtx);
       }
       cout << "thread[" << id << "] got " << loop;
       switch (loop) {
@@ -62,7 +62,7 @@ void *thread_func(void *arg) {
       turn = (turn + 1) % nThreads;
 
       // signal the next thread
-      pthread_cond_signal(cond);
+      pthread_cond_signal(&cond[turn]);
 
       // leave the critical section
       pthread_mutex_unlock(&mtx);
@@ -89,6 +89,11 @@ int main(int argc, char *argv[]) {
    cond = new pthread_cond_t[nThreads];      // an array of condition variables
    turn = 0; // points to which thread should run
 
+   pthread_mutex_init(&mtx, nullptr);
+   for (int i = 0; i < nThreads; i++) {
+      pthread_cond_init(&cond[i], nullptr);
+   }
+
    for (int i = 0; i < nThreads; i++) {
       int *id = new int[1];
       id[0] = i;
@@ -99,4 +104,12 @@ int main(int argc, char *argv[]) {
    {
       pthread_join(tid[i], NULL);
    }
+
+   for (int i = 0; i < nThreads; i++) {
+      pthread_cond_destroy(&cond[i]);
+   }
+   pthread_mutex_destroy(&mtx);
+
+   delete[] cond;
+   delete[] tid;
 }
