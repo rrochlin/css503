@@ -1,52 +1,60 @@
 #ifndef SHOP_ORG_H_
 #define SHOP_ORG_H_
-#include <pthread.h>
 #include <iostream>
+#include <pthread.h>
+#include <queue>
 #include <sstream>
 #include <string>
-#include <queue>
 using namespace std;
 
 #define kDefaultNumChairs 3
+#define kDefaultNumBarbers 1
 
-class Shop_org 
-{
-public:
-   Shop_org(int num_chairs) : max_waiting_cust_((num_chairs > 0 ) ? num_chairs : kDefaultNumChairs), customer_in_chair_(0),
-      in_service_(false), money_paid_(false), cust_drops_(0)
-   { 
-      init(); 
+class Shop {
+ public:
+   // we're only initializing the const's here because of the ternary in vec
+   // initializer
+   Shop(int num_barbers, int num_chairs)
+       : max_waiting_cust_((num_chairs > 0) ? num_chairs : kDefaultNumChairs),
+         cust_drops_(0),
+         max_num_barbers_((num_barbers > 0) ? num_barbers
+                                            : kDefaultNumBarbers) {
+      init();
    };
-   Shop_org() : max_waiting_cust_(kDefaultNumChairs), customer_in_chair_(0), in_service_(false),
-      money_paid_(false), cust_drops_(0)
-   { 
-      init(); 
+   Shop()
+       : max_waiting_cust_(kDefaultNumChairs), cust_drops_(0),
+         max_num_barbers_(kDefaultNumBarbers) {
+      init();
    };
 
-   bool visitShop(int id);   // return true only when a customer got a service
+   bool visitShop(int id); // return true only when a customer got a service
    void leaveShop(int id);
-   void helloCustomer();
-   void byeCustomer();
+   void helloCustomer(int id);
+   void byeCustomer(int id);
    int get_cust_drops() const;
 
  private:
-   const int max_waiting_cust_;              // the max number of threads that can wait
-   int customer_in_chair_;
-   bool in_service_;            
-   bool money_paid_;
-   queue<int> waiting_chairs_;  // includes the ids of all waiting threads
-   int cust_drops_;
+   const int max_waiting_cust_; // the max number of threads that can wait
+   const int max_num_barbers_;
+   vector<int> customer_in_chair_; // tracks which customers are where
+   vector<bool> in_service_;       // indicates barber is working
+   vector<bool> money_paid_;       // used to signal that customer finished
+   queue<int> waiting_chairs_;     // includes the ids of all waiting threads
+   queue<int> barbers;             // FIFO queue to handle provisioning barbers
+   int cust_drops_;                // track the number of customers turned away
 
-   // Mutexes and condition variables to coordinate threads
-   // mutex_ is used in conjuction with all conditional variables
+   // global mutex for data interaction that cannot be done in parallel
    pthread_mutex_t mutex_;
-   pthread_cond_t  cond_customers_waiting_;
-   pthread_cond_t  cond_customer_served_;
-   pthread_cond_t  cond_barber_paid_;
-   pthread_cond_t  cond_barber_sleeping_;
+   // condition flag to signal waiting customers, can be singular since
+   // any waiting customer would want to be notified if a barber is free
+   pthread_cond_t cond_customers_waiting_;
+   // array tracking when a customer is served by a barber
+   vector<pthread_cond_t> cond_customer_served_;
+   // array tracking which barber is paid
+   vector<pthread_cond_t> cond_barber_paid_;
+   // array tracking which barbers are sleeping
+   vector<pthread_cond_t> cond_barber_sleeping_;
 
-   static const int barber = 0; // the id of the barber thread
-  
    void init();
    string int2string(int i);
    void print(int person, string message);

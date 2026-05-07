@@ -1,4 +1,6 @@
 #include "shop.h"
+#include <cassert>
+#include <exception>
 #include <iostream>
 #include <sys/time.h>
 #include <unistd.h>
@@ -12,9 +14,9 @@ void *customer(void *);
 // than one argument to a thread.
 class ThreadParam {
  public:
-   ThreadParam(Shop_org *shop, int id, int service_time)
+   ThreadParam(Shop *shop, int id, int service_time)
        : shop(shop), id(id), service_time(service_time) {};
-   Shop_org *shop;
+   Shop *shop;
    int id;
    int service_time;
 };
@@ -23,21 +25,35 @@ int main(int argc, char *argv[]) {
 
    // Read arguments from command line
    // TODO: Validate values
-   if (argc != 4) {
-      cout << "Usage: num_chairs num_customers service_time" << endl;
+   if (argc != 5) {
+      cout << "Usage: num_barbers num_chairs num_customers service_time"
+           << endl;
       return -1;
    }
-   int num_chairs = atoi(argv[1]);
-   int num_customers = atoi(argv[2]);
-   int service_time = atoi(argv[3]);
+   int num_barbers, num_chairs, num_customers, service_time;
+   try {
+      num_barbers = atoi(argv[1]);
+      assert(num_barbers > 0);
+      num_chairs = atoi(argv[2]);
+      assert(num_chairs > 0);
+      num_customers = atoi(argv[3]);
+      assert(num_customers > 0);
+      service_time = atoi(argv[4]);
+      assert(service_time > 0);
+   } catch (exception e) {
+      cout << "incorrect usage: " << e.what();
+      return 1;
+   }
 
    // Single barber, one shop, many customers
-   pthread_t barber_thread;
+   pthread_t barber_threads[num_barbers];
    pthread_t customer_threads[num_customers];
-   Shop_org shop(num_chairs);
+   Shop shop(num_barbers, num_chairs);
 
-   ThreadParam *barber_param = new ThreadParam(&shop, 0, service_time);
-   pthread_create(&barber_thread, NULL, barber, barber_param);
+   for (int i = 0; i < num_barbers; i++) {
+      ThreadParam *barber_param = new ThreadParam(&shop, i, service_time);
+      pthread_create(&barber_threads[i], NULL, barber, barber_param);
+   }
 
    for (int i = 0; i < num_customers; i++) {
       usleep(rand() % 1000);
@@ -50,7 +66,9 @@ int main(int argc, char *argv[]) {
    for (int i = 0; i < num_customers; i++) {
       pthread_join(customer_threads[i], NULL);
    }
-   pthread_cancel(barber_thread);
+   for (int i = 0; i < num_barbers; i++) {
+      pthread_cancel(barber_threads[i]);
+   }
 
    cout << "# customers who didn't receive a service = "
         << shop.get_cust_drops() << endl;
@@ -59,21 +77,22 @@ int main(int argc, char *argv[]) {
 
 void *barber(void *arg) {
    ThreadParam *barber_param = (ThreadParam *)arg;
-   Shop_org &shop = *barber_param->shop;
+   Shop &shop = *barber_param->shop;
+   int id = barber_param->id;
    int service_time = barber_param->service_time;
    delete barber_param;
 
    while (true) {
-      shop.helloCustomer();
+      shop.helloCustomer(id);
       usleep(service_time);
-      shop.byeCustomer();
+      shop.byeCustomer(id);
    }
    return nullptr;
 }
 
 void *customer(void *arg) {
    ThreadParam *customer_param = (ThreadParam *)arg;
-   Shop_org &shop = *customer_param->shop;
+   Shop &shop = *customer_param->shop;
    int id = customer_param->id;
    delete customer_param;
 

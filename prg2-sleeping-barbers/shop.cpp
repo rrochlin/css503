@@ -1,27 +1,44 @@
 #include "shop.h"
+#include <algorithm>
+#include <iterator>
+#include <vector>
 
-void Shop_org::init() {
+void Shop::init() {
+   // load barber ID's into queue to manage their even dispatch
+   for (int i = 0; i < max_num_barbers_; i++) {
+      barbers.push(i);
+   }
+
+   customer_in_chair_ = vector<int>(max_num_barbers_, 0);
+   in_service_ = vector<bool>(max_num_barbers_, 0);
+   money_paid_ = vector<bool>(max_num_barbers_, 0);
+   cond_customer_served_ = vector<pthread_cond_t>(max_num_barbers_);
+   cond_barber_paid_ = vector<pthread_cond_t>(max_num_barbers_);
+   cond_barber_sleeping_ = vector<pthread_cond_t>(max_num_barbers_);
+
    pthread_mutex_init(&mutex_, NULL);
    pthread_cond_init(&cond_customers_waiting_, NULL);
-   pthread_cond_init(&cond_customer_served_, NULL);
-   pthread_cond_init(&cond_barber_paid_, NULL);
-   pthread_cond_init(&cond_barber_sleeping_, NULL);
+   for (int i = 0; i < max_num_barbers_; i++) {
+      pthread_cond_init(&cond_customer_served_[i], NULL);
+      pthread_cond_init(&cond_barber_paid_[i], NULL);
+      pthread_cond_init(&cond_barber_sleeping_[i], NULL);
+   }
 }
 
-string Shop_org::int2string(int i) {
+string Shop::int2string(int i) {
    stringstream out;
    out << i;
    return out.str();
 }
 
-void Shop_org::print(int person, string message) {
-   cout << ((person != barber) ? "customer[" : "barber  [") << person
+void Shop::print(int person, string message) {
+   cout << ((person < 0) ? "customer[" : "barber  [") << person
         << "]: " << message << endl;
 }
 
-int Shop_org::get_cust_drops() const { return cust_drops_; }
+int Shop::get_cust_drops() const { return cust_drops_; }
 
-bool Shop_org::visitShop(int id) {
+bool Shop::visitShop(int id) {
    pthread_mutex_lock(&mutex_);
 
    // If all chairs are full then leave shop
@@ -32,9 +49,8 @@ bool Shop_org::visitShop(int id) {
       return false;
    }
 
-   // If someone is being served or transitioning waiting to service chair
-   // then take a chair and wait for service
-   if (customer_in_chair_ != 0 || !waiting_chairs_.empty()) {
+   // if all barbers are busy and there are no free waiting chairs then leave
+   if (barbers.empty() || !waiting_chairs_.empty()) {
       waiting_chairs_.push(id);
       print(id, "takes a waiting chair. # waiting seats available = " +
                     int2string(max_waiting_cust_ - waiting_chairs_.size()));
@@ -44,67 +60,81 @@ bool Shop_org::visitShop(int id) {
 
    print(id, "moves to the service chair. # waiting seats available = " +
                  int2string(max_waiting_cust_ - waiting_chairs_.size()));
-   customer_in_chair_ = id;
-   in_service_ = true;
+
+   // grab the next open barber and pop
+   int barber = barbers.front();
+   barbers.pop();
+
+   customer_in_chair_[barber] = id;
+   in_service_[barber] = true;
 
    // wake up the barber just in case if he is sleeping
-   pthread_cond_signal(&cond_barber_sleeping_);
+   pthread_cond_signal(&cond_barber_sleeping_[barber]);
 
    pthread_mutex_unlock(&mutex_);
    return true;
 }
 
-void Shop_org::leaveShop(int id) {
+void Shop::leaveShop(int id) {
    pthread_mutex_lock(&mutex_);
 
    // Wait for service to be completed
    print(id, "wait for the hair-cut to be done");
-   while (in_service_ == true) {
-      pthread_cond_wait(&cond_customer_served_, &mutex_);
+   auto it = find(customer_in_chair_.begin(), customer_in_chair_.end(), id);
+   if (it == customer_in_chair_.end()) {
+      cerr << "customer expected in chair was not found aborting leave\n";
+      cerr << "customer: " << id << endl;
+      return;
+   }
+   int chair = distance(customer_in_chair_.begin(), it);
+   while (in_service_[chair] == true) {
+      pthread_cond_wait(&cond_customer_served_[chair], &mutex_);
    }
 
    // Pay the barber and signal barber appropriately
-   money_paid_ = true;
-   pthread_cond_signal(&cond_barber_paid_);
+   money_paid_[chair] = true;
+   pthread_cond_signal(&cond_barber_paid_[chair]);
    print(id, "says good-bye to the barber.");
    pthread_mutex_unlock(&mutex_);
 }
 
-void Shop_org::helloCustomer() {
+void Shop::helloCustomer(int id) {
    pthread_mutex_lock(&mutex_);
 
    // If no customers than barber can sleep
-   if (waiting_chairs_.empty() && customer_in_chair_ == 0) {
-      print(barber, "sleeps because of no customers.");
-      pthread_cond_wait(&cond_barber_sleeping_, &mutex_);
+   if (waiting_chairs_.empty() && customer_in_chair_[id] == 0) {
+      print(-1 * id, "sleeps because of no customers.");
+      pthread_cond_wait(&cond_barber_sleeping_[id], &mutex_);
    }
 
-   if (customer_in_chair_ == 0) // check if the customer, sit down.
+   if (customer_in_chair_[id] == 0) // check if the customer, sit down.
    {
-      pthread_cond_wait(&cond_barber_sleeping_, &mutex_);
+      pthread_cond_wait(&cond_barber_sleeping_[id], &mutex_);
    }
 
-   print(barber,
-         "starts a hair-cut service for " + int2string(customer_in_chair_));
+   print(-1 * id,
+         "starts a hair-cut service for " + int2string(customer_in_chair_[id]));
    pthread_mutex_unlock(&mutex_);
 }
 
-void Shop_org::byeCustomer() {
+void Shop::byeCustomer(int id) {
    pthread_mutex_lock(&mutex_);
 
    // Hair Cut-Service is done so signal customer and wait for payment
-   in_service_ = false;
-   print(barber, "says he's done with a hair-cut service for " +
-                     int2string(customer_in_chair_));
-   money_paid_ = false;
-   pthread_cond_signal(&cond_customer_served_);
-   while (money_paid_ == false) {
-      pthread_cond_wait(&cond_barber_paid_, &mutex_);
+   in_service_[id] = false;
+   print(-1 * id, "says he's done with a hair-cut service for " +
+                      int2string(customer_in_chair_[id]));
+   money_paid_[id] = false;
+   pthread_cond_signal(&cond_customer_served_[id]);
+   while (money_paid_[id] == false) {
+      pthread_cond_wait(&cond_barber_paid_[id], &mutex_);
    }
 
    // Signal to customer to get next one
-   customer_in_chair_ = 0;
-   print(barber, "calls in another customer");
+   customer_in_chair_[id] = 0;
+   print(-1 * id, "calls in another customer");
+
+   barbers.push(id);
    pthread_cond_signal(&cond_customers_waiting_);
 
    pthread_mutex_unlock(&mutex_); // unlock
