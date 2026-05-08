@@ -2,6 +2,8 @@
 #include <cassert>
 #include <exception>
 #include <iostream>
+#include <pthread.h>
+#include <stdexcept>
 #include <sys/time.h>
 #include <unistd.h>
 using namespace std;
@@ -26,8 +28,7 @@ int main(int argc, char *argv[]) {
    // Read arguments from command line
    // TODO: Validate values
    if (argc != 5) {
-      cout << "Usage: num_barbers num_chairs num_customers service_time"
-           << endl;
+      cout << "Usage: num_barbers num_chairs num_customers service_time" << endl;
       return -1;
    }
    int num_barbers, num_chairs, num_customers, service_time;
@@ -40,14 +41,14 @@ int main(int argc, char *argv[]) {
       assert(num_customers > 0);
       service_time = atoi(argv[4]);
       assert(service_time > 0);
-   } catch (exception e) {
+   } catch (const exception &e) {
       cout << "incorrect usage: " << e.what();
       return 1;
    }
 
    // Single barber, one shop, many customers
-   pthread_t barber_threads[num_barbers];
-   pthread_t customer_threads[num_customers];
+   pthread_t *barber_threads = new pthread_t[num_barbers];
+   pthread_t *customer_threads = new pthread_t[num_customers];
    Shop shop(num_barbers, num_chairs);
 
    for (int i = 0; i < num_barbers; i++) {
@@ -63,15 +64,10 @@ int main(int argc, char *argv[]) {
    }
 
    // Wait for customers to finish and cancel barber
-   for (int i = 0; i < num_customers; i++) {
-      pthread_join(customer_threads[i], NULL);
-   }
-   for (int i = 0; i < num_barbers; i++) {
-      pthread_cancel(barber_threads[i]);
-   }
+   for (int i = 0; i < num_customers; i++) { pthread_join(customer_threads[i], NULL); }
+   for (int i = 0; i < num_barbers; i++) { pthread_cancel(barber_threads[i]); }
 
-   cout << "# customers who didn't receive a service = "
-        << shop.get_cust_drops() << endl;
+   cout << "# customers who didn't receive a service = " << shop.get_cust_drops() << endl;
    return 0;
 }
 
@@ -96,8 +92,6 @@ void *customer(void *arg) {
    int id = customer_param->id;
    delete customer_param;
 
-   if (shop.visitShop(id) == true) {
-      shop.leaveShop(id);
-   }
+   if (shop.visitShop(id) == true) { shop.leaveShop(id); }
    return nullptr;
 }

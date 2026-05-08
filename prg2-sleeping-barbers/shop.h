@@ -16,14 +16,12 @@ class Shop {
    // initializer
    Shop(int num_barbers, int num_chairs)
        : max_waiting_cust_((num_chairs > 0) ? num_chairs : kDefaultNumChairs),
-         cust_drops_(0),
-         max_num_barbers_((num_barbers > 0) ? num_barbers
-                                            : kDefaultNumBarbers) {
+         max_num_barbers_((num_barbers > 0) ? num_barbers : kDefaultNumBarbers), cust_drops_(0) {
       init();
    };
    Shop()
-       : max_waiting_cust_(kDefaultNumChairs), cust_drops_(0),
-         max_num_barbers_(kDefaultNumBarbers) {
+       : max_waiting_cust_(kDefaultNumChairs), max_num_barbers_(kDefaultNumBarbers),
+         cust_drops_(0) {
       init();
    };
 
