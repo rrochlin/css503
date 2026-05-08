@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
       num_barbers = atoi(argv[1]);
       assert(num_barbers > 0);
       num_chairs = atoi(argv[2]);
-      assert(num_chairs > 0);
+      assert(num_chairs >= 0);
       num_customers = atoi(argv[3]);
       assert(num_customers > 0);
       service_time = atoi(argv[4]);
