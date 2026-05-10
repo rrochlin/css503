@@ -1,6 +1,7 @@
 #include "shop.h"
 #include <algorithm>
 #include <iterator>
+#include <queue>
 #include <vector>
 
 void Shop::init() {
@@ -40,16 +41,15 @@ int Shop::get_cust_drops() const {
 bool Shop::visitShop(int id) {
    pthread_mutex_lock(&mutex_);
 
-   // If all chairs are full then leave shop
-   if ((int)waiting_chairs_.size() == max_waiting_cust_) {
+   // If all chairs are full and there are no barbers leave
+   if ((int)waiting_chairs_.size() == max_waiting_cust_ && barbers.empty()) {
       print(id, "leaves the shop because of no available waiting chairs.");
       ++cust_drops_;
       pthread_mutex_unlock(&mutex_);
       return false;
    }
 
-   // if all barbers are busy and there are no free waiting chairs then leave
-   if (barbers.empty() || !waiting_chairs_.empty()) {
+   if (barbers.empty()) {
       waiting_chairs_.push(id);
       print(id, "takes a waiting chair. # waiting seats available = " +
                    int2string(max_waiting_cust_ - waiting_chairs_.size()));

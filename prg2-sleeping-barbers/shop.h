@@ -15,7 +15,7 @@ class Shop {
    // we're only initializing the const's here because of the ternary in vec
    // initializer
    Shop(int num_barbers, int num_chairs)
-       : max_waiting_cust_((num_chairs > 0) ? num_chairs : kDefaultNumChairs),
+       : max_waiting_cust_((num_chairs >= 0) ? num_chairs : kDefaultNumChairs),
          max_num_barbers_((num_barbers > 0) ? num_barbers : kDefaultNumBarbers), cust_drops_(0) {
       init();
    };
