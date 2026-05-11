@@ -3,9 +3,9 @@
 #include <exception>
 #include <iostream>
 #include <pthread.h>
-#include <stdexcept>
 #include <sys/time.h>
 #include <unistd.h>
+#include <vector>
 using namespace std;
 
 void *barber(void *);
@@ -26,7 +26,6 @@ class ThreadParam {
 int main(int argc, char *argv[]) {
 
    // Read arguments from command line
-   // TODO: Validate values
    if (argc != 5) {
       cout << "Usage: num_barbers num_chairs num_customers service_time" << endl;
       return -1;
@@ -46,9 +45,10 @@ int main(int argc, char *argv[]) {
       return 1;
    }
 
-   // Single barber, one shop, many customers
-   pthread_t *barber_threads = new pthread_t[num_barbers];
-   pthread_t *customer_threads = new pthread_t[num_customers];
+   // Multi-barber change from the original driver: vectors avoid leaking the
+   // thread-handle arrays while keeping the same thread model.
+   vector<pthread_t> barber_threads(num_barbers);
+   vector<pthread_t> customer_threads(num_customers);
    Shop shop(num_barbers, num_chairs);
 
    for (int i = 0; i < num_barbers; i++) {
@@ -63,9 +63,10 @@ int main(int argc, char *argv[]) {
       pthread_create(&customer_threads[i], NULL, customer, customer_param);
    }
 
-   // Wait for customers to finish and cancel barber
+   // Let barbers drain any in-flight work, then shut them down cleanly.
    for (int i = 0; i < num_customers; i++) { pthread_join(customer_threads[i], NULL); }
-   for (int i = 0; i < num_barbers; i++) { pthread_cancel(barber_threads[i]); }
+   shop.closeShop();
+   for (int i = 0; i < num_barbers; i++) { pthread_join(barber_threads[i], NULL); }
 
    cout << "# customers who didn't receive a service = " << shop.get_cust_drops() << endl;
    return 0;
@@ -79,7 +80,7 @@ void *barber(void *arg) {
    delete barber_param;
 
    while (true) {
-      shop.helloCustomer(id);
+      if (!shop.helloCustomer(id)) { break; }
       usleep(service_time);
       shop.byeCustomer(id);
    }

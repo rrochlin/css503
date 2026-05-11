@@ -5,6 +5,7 @@
 #include <queue>
 #include <sstream>
 #include <string>
+#include <vector>
 using namespace std;
 
 #define kDefaultNumChairs 3
@@ -16,19 +17,22 @@ class Shop {
    // initializer
    Shop(int num_barbers, int num_chairs)
        : max_waiting_cust_((num_chairs >= 0) ? num_chairs : kDefaultNumChairs),
-         max_num_barbers_((num_barbers > 0) ? num_barbers : kDefaultNumBarbers), cust_drops_(0) {
+         max_num_barbers_((num_barbers > 0) ? num_barbers : kDefaultNumBarbers), cust_drops_(0),
+         closing_(false) {
       init();
    };
    Shop()
-       : max_waiting_cust_(kDefaultNumChairs), max_num_barbers_(kDefaultNumBarbers),
-         cust_drops_(0) {
+       : max_waiting_cust_(kDefaultNumChairs), max_num_barbers_(kDefaultNumBarbers), cust_drops_(0),
+         closing_(false) {
       init();
    };
+   ~Shop();
 
    bool visitShop(int id); // return true only when a customer got a service
    void leaveShop(int id);
-   void helloCustomer(int id);
+   bool helloCustomer(int id);
    void byeCustomer(int id);
+   void closeShop();
    int get_cust_drops() const;
 
  private:
@@ -40,6 +44,7 @@ class Shop {
    queue<int> waiting_chairs_;     // includes the ids of all waiting threads
    queue<int> barbers;             // FIFO queue to handle provisioning barbers
    int cust_drops_;                // track the number of customers turned away
+   bool closing_;
 
    // global mutex for data interaction that cannot be done in parallel
    pthread_mutex_t mutex_;

@@ -5,7 +5,8 @@
 #include <vector>
 
 void Shop::init() {
-   // load barber ID's into queue to manage their even dispatch
+   // Multi-barber change from the original code: keep a FIFO of available
+   // barbers so customers can claim a specific barber fairly.
    for (int i = 0; i < max_num_barbers_; i++) { barbers.push(i); }
 
    customer_in_chair_ = vector<int>(max_num_barbers_, 0);
@@ -21,6 +22,16 @@ void Shop::init() {
       pthread_cond_init(&cond_customer_served_[i], NULL);
       pthread_cond_init(&cond_barber_paid_[i], NULL);
       pthread_cond_init(&cond_barber_sleeping_[i], NULL);
+   }
+}
+
+Shop::~Shop() {
+   pthread_mutex_destroy(&mutex_);
+   pthread_cond_destroy(&cond_customers_waiting_);
+   for (int i = 0; i < max_num_barbers_; i++) {
+      pthread_cond_destroy(&cond_customer_served_[i]);
+      pthread_cond_destroy(&cond_barber_paid_[i]);
+      pthread_cond_destroy(&cond_barber_sleeping_[i]);
    }
 }
 
@@ -41,19 +52,26 @@ int Shop::get_cust_drops() const {
 bool Shop::visitShop(int id) {
    pthread_mutex_lock(&mutex_);
 
-   // If all chairs are full and there are no barbers leave
-   if ((int)waiting_chairs_.size() == max_waiting_cust_ && barbers.empty()) {
-      print(id, "leaves the shop because of no available waiting chairs.");
-      ++cust_drops_;
-      pthread_mutex_unlock(&mutex_);
-      return false;
-   }
+   // if there are no free barbers or there's already people in line
+   if (barbers.empty() || !waiting_chairs_.empty()) {
+      // if there's no room leave
+      if ((int)waiting_chairs_.size() == max_waiting_cust_) {
+         print(id, "leaves the shop because of no available waiting chairs.");
+         ++cust_drops_;
+         pthread_mutex_unlock(&mutex_);
+         return false;
+      }
 
-   if (barbers.empty()) {
+      // join the waitlist
       waiting_chairs_.push(id);
       print(id, "takes a waiting chair. # waiting seats available = " +
                    int2string(max_waiting_cust_ - waiting_chairs_.size()));
-      pthread_cond_wait(&cond_customers_waiting_, &mutex_);
+
+      while (barbers.empty() || waiting_chairs_.front() != id) {
+         pthread_cond_wait(&cond_customers_waiting_, &mutex_);
+      }
+
+      // remove yourself since you were the customer who got woken up
       waiting_chairs_.pop();
    }
 
@@ -83,6 +101,7 @@ void Shop::leaveShop(int id) {
    if (it == customer_in_chair_.end()) {
       cerr << "customer expected in chair was not found aborting leave\n";
       cerr << "customer: " << id << endl;
+      pthread_mutex_unlock(&mutex_);
       return;
    }
    int chair = distance(customer_in_chair_.begin(), it);
@@ -95,22 +114,25 @@ void Shop::leaveShop(int id) {
    pthread_mutex_unlock(&mutex_);
 }
 
-void Shop::helloCustomer(int id) {
+bool Shop::helloCustomer(int id) {
    pthread_mutex_lock(&mutex_);
 
-   // If no customers than barber can sleep
-   if (waiting_chairs_.empty() && customer_in_chair_[id] == 0) {
+   if (customer_in_chair_[id] == 0 && !closing_) {
       print(-1 * id, "sleeps because of no customers.");
+   }
+
+   while (customer_in_chair_[id] == 0 && !closing_) {
       pthread_cond_wait(&cond_barber_sleeping_[id], &mutex_);
    }
 
-   if (customer_in_chair_[id] == 0) // check if the customer, sit down.
-   {
-      pthread_cond_wait(&cond_barber_sleeping_[id], &mutex_);
+   if (customer_in_chair_[id] == 0 && closing_) {
+      pthread_mutex_unlock(&mutex_);
+      return false;
    }
 
    print(-1 * id, "starts a hair-cut service for " + int2string(customer_in_chair_[id]));
    pthread_mutex_unlock(&mutex_);
+   return true;
 }
 
 void Shop::byeCustomer(int id) {
@@ -129,7 +151,15 @@ void Shop::byeCustomer(int id) {
    print(-1 * id, "calls in another customer");
 
    barbers.push(id);
-   pthread_cond_signal(&cond_customers_waiting_);
+   pthread_cond_broadcast(&cond_customers_waiting_);
 
    pthread_mutex_unlock(&mutex_); // unlock
+}
+
+void Shop::closeShop() {
+   pthread_mutex_lock(&mutex_);
+   closing_ = true;
+   pthread_cond_broadcast(&cond_customers_waiting_);
+   for (int i = 0; i < max_num_barbers_; i++) { pthread_cond_signal(&cond_barber_sleeping_[i]); }
+   pthread_mutex_unlock(&mutex_);
 }
