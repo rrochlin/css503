@@ -67,6 +67,7 @@ bool Shop::visitShop(int id) {
       print(id, "takes a waiting chair. # waiting seats available = " +
                    int2string(max_waiting_cust_ - waiting_chairs_.size()));
 
+      // avoid spurious wakes
       while (barbers.empty() || waiting_chairs_.front() != id) {
          pthread_cond_wait(&cond_customers_waiting_, &mutex_);
       }
