@@ -1,0 +1,20 @@
+Script started on Sun May 17 20:18:50 2026
+complete:13: command not found: compdef
+[1m[7m%[27m[1m[0m                                                                       [0m[27m[24m[Jrobertrochlin@MacBook-Air-13 lab-3-files % [K[?2004hexitclion ../run.sh[8Dg++ lab3.cpp -o lab3 && ./lab3 hamlet.txt 512[K[A[26C./run.sh[K[1B[K[A[51C[8Dclion . exit       ../lab3.  h     bin/lab3[1m [0m[0m out   hamlet.txt[1m [0m[0m 512[?2004l[1Blab3(87268,0x1ff5e60c0) malloc: nano zone abandoned due to inability to reserve vm space.
+Unix read's elapsed time	= 192
+fread time's elapsed time	= 55
+[1m[7m%[27m[1m[0m                                                                       [0m[27m[24m[Jrobertrochlin@MacBook-Air-13 lab-3-files % [K[?2004h./bin/lab3 hamlet.txt 512   1024[?2004l
+lab3(87288,0x1ff5e60c0) malloc: nano zone abandoned due to inability to reserve vm space.
+Unix read's elapsed time	= 108
+fread time's elapsed time	= 46
+[1m[7m%[27m[1m[0m                                                                       [0m[27m[24m[Jrobertrochlin@MacBook-Air-13 lab-3-files % [K[?2004h./bin/lab3 hamlet.txt 1024    2048[?2004l
+lab3(87306,0x1ff5e60c0) malloc: nano zone abandoned due to inability to reserve vm space.
+Unix read's elapsed time	= 43
+fread time's elapsed time	= 30
+[1m[7m%[27m[1m[0m                                                                       [0m[27m[24m[Jrobertrochlin@MacBook-Air-13 lab-3-files % [K[?2004h./bin/lab3 hamlet.txt 2048    4096[?2004l
+lab3(87322,0x1ff5e60c0) malloc: nano zone abandoned due to inability to reserve vm space.
+Unix read's elapsed time	= 47
+fread time's elapsed time	= 39
+[1m[7m%[27m[1m[0m                                                                       [0m[27m[24m[Jrobertrochlin@MacBook-Air-13 lab-3-files % [K[?2004heexit[?2004l
+
+Script done on Sun May 17 20:19:37 2026
