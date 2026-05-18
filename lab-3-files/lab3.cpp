@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
       return -1;
    }
    startTimer();
-   while (read(fd, buf, bytes) > 0);
+   while (read(fd, buf, bytes) != EOF);
    stopTimer("Unix read");
    close(fd);
    // standard i/o
@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
    }
    if (bytes == 1) {
       startTimer();
-      fgetc(fd2);
+      while (fgetc(fd2) > 0);
       stopTimer("fgetc time");
    } else {
       char *buf2 = new char[bytes];
