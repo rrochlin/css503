@@ -1,3 +1,7 @@
+#pragma once
+#include "stdio.h"
+
+#include <exception>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -60,7 +64,7 @@ int printf(const void *format, ...) {
             nWritten += write(1, "-", 1);
          }
          nWritten += write(1, dec, strlen(dec));
-         delete dec;
+         delete[] dec;
       } else {
          buf[j++] = msg[i++];
       }
@@ -82,7 +86,7 @@ int setvbuf(FILE *stream, char *buf, int mode, size_t size) {
    stream->mode = mode;
    stream->pos = 0;
    if (stream->buffer != (char *)0 && stream->bufown == true) {
-      delete stream->buffer;
+      delete[] stream->buffer;
    }
 
    switch (mode) {
@@ -133,53 +137,41 @@ FILE *fopen(const char *path, const char *mode) {
 
    switch (mode[0]) {
    case 'r':
-      if (mode[1] == '\0') // r
-      {
+      if (mode[1] == '\0') { // r
          stream->flag = O_RDONLY;
       } else if (mode[1] == 'b') {
-         if (mode[2] == '\0') // rb
-         {
+         if (mode[2] == '\0') { // rb
             stream->flag = O_RDONLY;
-         } else if (mode[2] == '+') // rb+
-         {
+         } else if (mode[2] == '+') { // rb+
             stream->flag = O_RDWR;
          }
-      } else if (mode[1] == '+') // r+  r+b
-      {
+      } else if (mode[1] == '+') { // r+  r+b
          stream->flag = O_RDWR;
       }
       break;
    case 'w':
-      if (mode[1] == '\0') // w
-      {
+      if (mode[1] == '\0') { // w
          stream->flag = O_WRONLY | O_CREAT | O_TRUNC;
       } else if (mode[1] == 'b') {
-         if (mode[2] == '\0') // wb
-         {
+         if (mode[2] == '\0') { // wb
             stream->flag = O_WRONLY | O_CREAT | O_TRUNC;
-         } else if (mode[2] == '+') // wb+
-         {
+         } else if (mode[2] == '+') { // wb+
             stream->flag = O_RDWR | O_CREAT | O_TRUNC;
          }
-      } else if (mode[1] == '+') // w+  w+b
-      {
+      } else if (mode[1] == '+') { // w+  w+b
          stream->flag = O_RDWR | O_CREAT | O_TRUNC;
       }
       break;
    case 'a':
-      if (mode[1] == '\0') // a
-      {
+      if (mode[1] == '\0') { // a
          stream->flag = O_WRONLY | O_CREAT | O_APPEND;
       } else if (mode[1] == 'b') {
-         if (mode[2] == '\0') // ab
-         {
+         if (mode[2] == '\0') { // ab
             stream->flag = O_WRONLY | O_CREAT | O_APPEND;
-         } else if (mode[2] == '+') // ab+
-         {
+         } else if (mode[2] == '+') { // ab+
             stream->flag = O_RDWR | O_CREAT | O_APPEND;
          }
-      } else if (mode[1] == '+') // a+  a+b
-      {
+      } else if (mode[1] == '+') { // a+  a+b
          stream->flag = O_RDWR | O_CREAT | O_APPEND;
       }
       break;
@@ -197,12 +189,44 @@ FILE *fopen(const char *path, const char *mode) {
 }
 
 int fpurge(FILE *stream) {
-   // complete it
+   stream->pos = 0;
+   stream->actual_size = 0;
+   if (stream->lastop == 'w') {
+      stream->eof = false;
+   }
    return 0;
 }
 
 int fflush(FILE *stream) {
-   // comlete it
+   if (stream == NULL) {
+      return EOF;
+   }
+
+   if (stream->lastop == 'w') {
+      int total = 0;
+      while (total < stream->pos) {
+         int nWritten =
+             write(stream->fd, stream->buffer + total, stream->pos - total);
+         if (nWritten <= 0) {
+            return EOF;
+         }
+         total += nWritten;
+      }
+      stream->pos = 0;
+      stream->actual_size = 0;
+      return 0;
+   }
+
+   if (stream->lastop == 'r' && stream->mode != _IONBF &&
+       stream->actual_size > stream->pos) {
+      int unread = stream->actual_size - stream->pos;
+      if (lseek(stream->fd, -unread, SEEK_CUR) == -1) {
+         return EOF;
+      }
+      stream->pos = 0;
+      stream->actual_size = 0;
+   }
+
    return 0;
 }
 
@@ -222,43 +246,191 @@ int fflush(FILE *stream) {
 // using size_t vs int, you can guarantee a non-neg value that can represent
 // the sizes of the largest objects possible in memory)
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-   // complete it
-   return 0;
+   if (size == 0 || nmemb == 0) {
+      return 0;
+   }
+
+   if (stream->lastop == 'w' && fflush(stream) == EOF) {
+      return 0;
+   }
+
+   char *out = (char *)ptr;
+   size_t total_requested = size * nmemb;
+   size_t total_read = 0;
+   stream->lastop = 'r';
+
+   if (stream->mode == _IONBF || stream->buffer == (char *)0) {
+      while (total_read < total_requested) {
+         int nRead =
+             read(stream->fd, out + total_read, total_requested - total_read);
+         if (nRead < 0) {
+            break;
+         }
+         if (nRead == 0) {
+            stream->eof = true;
+            break;
+         }
+         total_read += nRead;
+      }
+      return total_read / size;
+   }
+
+   while (total_read < total_requested) {
+      if (stream->pos >= stream->actual_size) {
+         int nRead = read(stream->fd, stream->buffer, stream->size);
+         if (nRead < 0) {
+            stream->pos = 0;
+            stream->actual_size = 0;
+            break;
+         }
+         if (nRead == 0) {
+            stream->eof = true;
+            stream->pos = 0;
+            stream->actual_size = 0;
+            break;
+         }
+         stream->pos = 0;
+         stream->actual_size = nRead;
+      }
+
+      int available = stream->actual_size - stream->pos;
+      size_t remaining = total_requested - total_read;
+      int chunk = (available < (int)remaining) ? available : remaining;
+      bcopy(stream->buffer + stream->pos, out + total_read, chunk);
+      stream->pos += chunk;
+      total_read += chunk;
+   }
+
+   return total_read / size;
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
-   // comlete it
-   return 0;
+   if (size == 0 || nmemb == 0) {
+      return 0;
+   }
+
+   if (stream->lastop == 'r' && fflush(stream) == EOF) {
+      return 0;
+   }
+
+   const char *in = (const char *)ptr;
+   size_t total_requested = size * nmemb;
+   size_t total_written = 0;
+   stream->lastop = 'w';
+   stream->eof = false;
+
+   if (stream->mode == _IONBF || stream->buffer == (char *)0) {
+      while (total_written < total_requested) {
+         int nWritten = write(stream->fd, in + total_written,
+                              total_requested - total_written);
+         if (nWritten <= 0) {
+            break;
+         }
+         total_written += nWritten;
+      }
+      return total_written / size;
+   }
+
+   while (total_written < total_requested) {
+      if (stream->pos == stream->size && fflush(stream) == EOF) {
+         break;
+      }
+
+      int space = stream->size - stream->pos;
+      size_t remaining = total_requested - total_written;
+      int chunk = (space < (int)remaining) ? space : remaining;
+      bcopy(in + total_written, stream->buffer + stream->pos, chunk);
+      stream->pos += chunk;
+      total_written += chunk;
+   }
+
+   return total_written / size;
 }
 
 int fgetc(FILE *stream) {
-   // complete it
-   return 0;
+   unsigned char c;
+   if (fread(&c, sizeof(char), 1, stream) != 1) {
+      return EOF;
+   }
+   return c;
 }
 
 int fputc(int c, FILE *stream) {
-   // complete it
-   return 0;
+   unsigned char out = c;
+   if (fwrite(&out, sizeof(char), 1, stream) != 1) {
+      return EOF;
+   }
+   return out;
 }
 
 char *fgets(char *str, int size, FILE *stream) {
-   // complete it
-   return NULL;
+   if (size <= 0) {
+      return NULL;
+   }
+
+   if (size == 1) {
+      str[0] = '\0';
+      return str;
+   }
+
+   int i = 0;
+   while (i < size - 1) {
+      int c = fgetc(stream);
+      if (c == EOF) {
+         break;
+      }
+      str[i++] = c;
+      if (c == '\n') {
+         break;
+      }
+   }
+
+   if (i == 0) {
+      return NULL;
+   }
+
+   str[i] = '\0';
+   return str;
 }
 
 int fputs(const char *str, FILE *stream) {
-   // complete it
-   return 0;
+   size_t len = strlen(str);
+   return (fwrite(str, sizeof(char), len, stream) == len) ? len : EOF;
 }
 
 int feof(FILE *stream) { return stream->eof == true; }
 
 int fseek(FILE *stream, long offset, int whence) {
-   // complete it
+   if (stream->lastop == 'w' && fflush(stream) == EOF) {
+      return EOF;
+   }
+
+   if (stream->lastop == 'r' && whence == SEEK_CUR) {
+      offset -= stream->actual_size - stream->pos;
+   }
+
+   if (lseek(stream->fd, offset, whence) == -1) {
+      return EOF;
+   }
+
+   stream->pos = 0;
+   stream->actual_size = 0;
+   stream->lastop = 0;
+   stream->eof = false;
    return 0;
 }
 
 int fclose(FILE *stream) {
-   // complete it
-   return 0;
+   int ret = 0;
+   if (stream->lastop == 'w' && fflush(stream) == EOF) {
+      ret = EOF;
+   }
+   if (close(stream->fd) == -1) {
+      ret = EOF;
+   }
+   if (stream->buffer != (char *)0 && stream->bufown == true) {
+      delete[] stream->buffer;
+   }
+   delete stream;
+   return ret;
 }
