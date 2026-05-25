@@ -1,7 +1,6 @@
 #pragma once
 #include "stdio.h"
 
-#include <exception>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -188,15 +187,18 @@ FILE *fopen(const char *path, const char *mode) {
    return stream;
 }
 
+// fpurge discards any buffered data without synchronizing it to the file.
+// For reads this drops prefetched input, and for writes it drops staged output.
 int fpurge(FILE *stream) {
    stream->pos = 0;
    stream->actual_size = 0;
-   if (stream->lastop == 'w') {
-      stream->eof = false;
-   }
    return 0;
 }
 
+// fflush synchronizes the stream state with the file descriptor.
+// Writes push staged output to the file, while reads discard unread buffered
+// input and seek the fd back so the kernel offset matches the logical stream
+// position again.
 int fflush(FILE *stream) {
    if (stream == NULL) {
       return EOF;
@@ -230,26 +232,15 @@ int fflush(FILE *stream) {
    return 0;
 }
 
-// ** Replace with your own comments **
-// fread (Sample input/return parameter comments - For full behavior, consult C
-// documentation for stdio functions) Reads data from a given stream into a ptr
-// buffer Input parameters: ptr = pointer to the buffer where the data read from
-// the file will be stored
-//					 size = the size(in bytes) of each element to be read,
-//					 nmemb(count) = the number of elements that will be read from the
-// file, each one with "size" bytes 					 stream = pointer to the file
-// to read from
-// Returns: 		 total number of elements read.  (Note: can be less than
-// requested items)
-//					 (Note: size_t is an unsigned integer type that is often used as
-// the return type to represent 					   returned sizes of objects.  By
-// using size_t vs int, you can guarantee a non-neg value that can represent
-// the sizes of the largest objects possible in memory)
+// fread supports buffered and unbuffered reads from the file into a provided
+// buffer. It attempts to read size * nmemb bytes and returns the number of
+// full elements read, which may be smaller on EOF or read error.
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
    if (size == 0 || nmemb == 0) {
       return 0;
    }
 
+   // if there is still data from a write flush it before reading
    if (stream->lastop == 'w' && fflush(stream) == EOF) {
       return 0;
    }
@@ -259,6 +250,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
    size_t total_read = 0;
    stream->lastop = 'r';
 
+   // unbuffered read
    if (stream->mode == _IONBF || stream->buffer == (char *)0) {
       while (total_read < total_requested) {
          int nRead =
@@ -275,9 +267,16 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
       return total_read / size;
    }
 
+   // buffered read
    while (total_read < total_requested) {
+      // If all buffered bytes have been consumed, refill the stream buffer
+      // from the file descriptor.
       if (stream->pos >= stream->actual_size) {
          int nRead = read(stream->fd, stream->buffer, stream->size);
+
+         // On read error or EOF, clear the buffered read state and stop.
+         // The function will return however many full elements were read so
+         // far.
          if (nRead < 0) {
             stream->pos = 0;
             stream->actual_size = 0;
@@ -293,6 +292,8 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
          stream->actual_size = nRead;
       }
 
+      // Copy up to chunk bytes from the internal stream buffer into
+      // the provided output buffer.
       int available = stream->actual_size - stream->pos;
       size_t remaining = total_requested - total_read;
       int chunk = (available < (int)remaining) ? available : remaining;
@@ -304,11 +305,16 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
    return total_read / size;
 }
 
+// fwrite supports buffered and unbuffered writes. It attempts to write
+// size * nmemb bytes from the caller-provided buffer into the stream and
+// returns the number of full elements written.
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
    if (size == 0 || nmemb == 0) {
       return 0;
    }
 
+   // If the stream was previously reading, discard any unread buffered input
+   // and realign the file descriptor before switching to writes.
    if (stream->lastop == 'r' && fflush(stream) == EOF) {
       return 0;
    }
@@ -331,6 +337,8 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
       return total_written / size;
    }
 
+   // Buffered writes stage data in the stream buffer and flush it to the
+   // file descriptor whenever the buffer becomes full.
    while (total_written < total_requested) {
       if (stream->pos == stream->size && fflush(stream) == EOF) {
          break;
@@ -347,6 +355,8 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
    return total_written / size;
 }
 
+// fgetc is a one-byte wrapper around fread. It returns the byte as an int or
+// EOF if no byte can be read.
 int fgetc(FILE *stream) {
    unsigned char c;
    if (fread(&c, sizeof(char), 1, stream) != 1) {
@@ -355,6 +365,8 @@ int fgetc(FILE *stream) {
    return c;
 }
 
+// fputc is a one-byte wrapper around fwrite. It returns the written byte or
+// EOF if the write fails.
 int fputc(int c, FILE *stream) {
    unsigned char out = c;
    if (fwrite(&out, sizeof(char), 1, stream) != 1) {
@@ -363,6 +375,8 @@ int fputc(int c, FILE *stream) {
    return out;
 }
 
+// fgets reads at most size - 1 bytes one character at a time, stopping after
+// a newline or EOF, and always null-terminates the returned string.
 char *fgets(char *str, int size, FILE *stream) {
    if (size <= 0) {
       return NULL;
@@ -393,6 +407,8 @@ char *fgets(char *str, int size, FILE *stream) {
    return str;
 }
 
+// fputs writes the full null-terminated string to the stream but does not
+// append an extra newline.
 int fputs(const char *str, FILE *stream) {
    size_t len = strlen(str);
    return (fwrite(str, sizeof(char), len, stream) == len) ? len : EOF;
@@ -400,6 +416,10 @@ int fputs(const char *str, FILE *stream) {
 
 int feof(FILE *stream) { return stream->eof == true; }
 
+// fseek moves the file position after first reconciling any buffered state.
+// Pending writes are flushed, and SEEK_CUR after buffered reads is adjusted so
+// the seek is relative to the logical stream position rather than the advanced
+// kernel fd offset.
 int fseek(FILE *stream, long offset, int whence) {
    if (stream->lastop == 'w' && fflush(stream) == EOF) {
       return EOF;
@@ -420,6 +440,8 @@ int fseek(FILE *stream, long offset, int whence) {
    return 0;
 }
 
+// fclose flushes pending buffered output, closes the underlying file
+// descriptor, releases any owned stream buffer, and deletes the FILE object.
 int fclose(FILE *stream) {
    int ret = 0;
    if (stream->lastop == 'w' && fflush(stream) == EOF) {

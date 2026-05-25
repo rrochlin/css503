@@ -1,0 +1,50 @@
+Program 3 Writeup: Custom stdio Implementation
+
+This project implements a minimal subset of the C/C++ standard I/O library on
+top of Unix system calls. The implementation centers on the FILE class defined
+in stdio.h. Each FILE object stores a Unix file descriptor, a single shared
+buffer, the configured buffering mode, the current position within the buffer,
+the amount of valid buffered data, and bookkeeping fields for end-of-file and
+the last operation performed. fopen maps the stdio mode string to open flags,
+opens the file with open, and configures a fully buffered stream by default.
+
+The key design choice is using one buffer for both reads and writes. For input,
+fread fills the internal buffer with read(fd, buffer, size) and then copies
+requested bytes from the internal buffer into the caller's memory. The pos and
+actual_size fields track how much buffered input has been consumed and how much
+remains available. This lets repeated small operations such as fgetc or fgets
+reuse already fetched bytes and avoid a system call per character. For output,
+fwrite copies the caller's data into the internal buffer and flushes it to the
+file descriptor when the buffer becomes full. fputc and fputs are thin wrappers
+around fwrite, while fgetc and fgets are wrappers around fread.
+
+The trickiest part of the implementation is keeping the logical stream position
+consistent with the kernel's file descriptor position. Buffered reads may fetch
+more bytes than the caller immediately consumes, so the file descriptor can be
+ahead of the logical stream position. fflush and fseek handle this by seeking
+back over unread buffered input when the last operation was a read. When the
+last operation was a write, fflush instead pushes buffered output to the file.
+fseek also flushes pending writes before moving the file position. fclose
+flushes pending buffered output, closes the file descriptor, frees any owned
+buffer, and deletes the FILE object.
+
+This implementation has several limitations. It does not fully emulate the real
+behavior of the standard library, does not implement line buffering, and does
+not provide the extensive error reporting or edge-case handling of a production
+stdio implementation. The printf implementation only supports %d and raw string
+output. The code also assumes a single-threaded environment and does not add
+locking around shared stream state. A natural extension would be adding more
+format specifiers, implementing _IOLBF semantics, and expanding error-state
+tracking so callers could distinguish EOF from other failures more precisely.
+
+Performance-wise, this custom stdio layer should outperform raw Unix I/O for
+small repeated reads and writes because it batches many small operations into a
+smaller number of read and write system calls. This is especially visible for
+character-by-character access patterns, where direct Unix I/O would otherwise
+need one syscall per byte. Compared with the Unix-original stdio.h, this custom
+implementation is usually slower or less optimized because the system stdio
+library has many years of tuning, more mature buffering logic, and additional
+low-level optimizations. Even so, the custom layer demonstrates the main reason
+stdio exists: buffering can significantly reduce syscall overhead and produce
+better performance than unbuffered Unix I/O while presenting a simpler stream
+interface to the programmer.
