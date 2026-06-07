@@ -1,0 +1,32 @@
+OpenDota CLI
+Look up a player's recent matches and inspect one match.
+Logging output to opendota.log
+
+Recent matches
+[0] match_id=8117944577 hero_id=67 kills=8 deaths=3 assists=24 win=True
+[1] match_id=8117870712 hero_id=67 kills=1 deaths=8 assists=9 win=True
+[2] match_id=8114413911 hero_id=102 kills=3 deaths=13 assists=22 win=True
+[3] match_id=8114361700 hero_id=78 kills=6 deaths=5 assists=5 win=False
+[4] match_id=8074142127 hero_id=33 kills=8 deaths=9 assists=11 win=False
+
+Match details
+match_id: 8114361700
+duration: 1862
+radiant_win: False
+radiant_score: 24
+dire_score: 40
+game_mode: 4
+region: 3
+start_time: 1736062150
+
+Players
+slot=0 hero_id=73 kills=1 deaths=8 assists=12
+slot=1 hero_id=13 kills=10 deaths=9 assists=10
+slot=2 hero_id=111 kills=4 deaths=13 assists=16
+slot=3 hero_id=78 kills=6 deaths=5 assists=5
+slot=4 hero_id=34 kills=2 deaths=5 assists=16
+slot=128 hero_id=4 kills=16 deaths=1 assists=14
+slot=129 hero_id=110 kills=2 deaths=7 assists=25
+slot=130 hero_id=59 kills=7 deaths=5 assists=7
+slot=131 hero_id=138 kills=14 deaths=5 assists=7
+slot=132 hero_id=91 kills=1 deaths=6 assists=24
